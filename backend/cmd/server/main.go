@@ -48,8 +48,10 @@ func main() {
 		api.GET("/products", handler.GetProductsHandler)
 		api.GET("/products/:id", handler.GetProductByIDHandler)
 		api.GET("/home", handler.GetHomePageProductsHandler)
+		api.GET("/products/:id/reviews", handler.GetReviewsHandler)
 		api.POST("/users", handler.RegisterUserHandler)
 		api.POST("/inquiries", handler.CreateInquiryHandler)
+		api.POST("/orders/webhook", handler.StripeWebhookHandler)
 
 		auth := api.Group("/auth")
 		{
@@ -61,6 +63,15 @@ func main() {
 		authorized.Use(middleware.AuthMiddleware())
 		{
 			authorized.GET("/users/me", handler.GetUserMeHandler)
+			authorized.PUT("/users", handler.UpdateUserHandler)
+			authorized.PUT("/users/password", handler.UpdatePasswordHandler)
+			authorized.POST("/orders/checkout", handler.CreateCheckoutSessionHandler)
+			authorized.GET("/orders", handler.GetOrdersHandler)
+			authorized.POST("/products/:id/reviews", handler.CreateReviewHandler)
+			authorized.GET("/favorites", handler.ListFavoritesHandler)
+			authorized.POST("/favorites", handler.AddFavoriteHandler)
+			authorized.GET("/favorites/:productId", handler.GetFavoriteStatusHandler)
+			authorized.DELETE("/favorites/:productId", handler.RemoveFavoriteHandler)
 		}
 
 		admin := api.Group("/")

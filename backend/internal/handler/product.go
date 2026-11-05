@@ -16,12 +16,14 @@ import (
 )
 
 type ProductListItem struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Price     int       `json:"price"`
-	Stock     int       `json:"stock"`
-	ImageURL  *string   `json:"image_url"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
+	Price       int       `json:"price"`
+	Stock       int       `json:"stock"`
+	ImageURL    *string   `json:"image_url"`
+	ReviewAvg   float64   `json:"review_avg"`
+	ReviewCount int       `json:"review_count"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Product struct {
@@ -50,10 +52,12 @@ type ProductsPageData struct {
 }
 
 type HomePageProduct struct {
-	ID       int     `json:"id"`
-	Name     string  `json:"name"`
-	Price    int     `json:"price"`
-	ImageURL *string `json:"image_url"`
+	ID          int     `json:"id"`
+	Name        string  `json:"name"`
+	Price       int     `json:"price"`
+	ImageURL    *string `json:"image_url"`
+	ReviewAvg   float64 `json:"review_avg"`
+	ReviewCount int     `json:"review_count"`
 }
 
 type HomePageData struct {
@@ -72,23 +76,26 @@ func GetProductsHandler(c *gin.Context) {
 	if err != nil || perPage < 1 {
 		perPage = 16
 	}
+	if perPage > 100 {
+		perPage = 100
+	}
 
 	sort := c.DefaultQuery("sort", "new")
 	var orderByClause string
 	switch sort {
 	case "priceAsc":
-		orderByClause = "ORDER BY price ASC"
+		orderByClause = "ORDER BY p.price ASC"
 	case "new":
-		orderByClause = "ORDER BY created_at DESC"
+		orderByClause = "ORDER BY p.created_at DESC"
 	default:
-		orderByClause = "ORDER BY created_at DESC"
+		orderByClause = "ORDER BY p.created_at DESC"
 	}
 
 	keyword := c.DefaultQuery("keyword", "")
 	var whereClause string
 	var whereParams []any
 	if keyword != "" {
-		whereClause = "WHERE (name LIKE ? OR description LIKE ?)"
+		whereClause = "WHERE (p.name LIKE ? OR p.description LIKE ?)"
 		likeKeyword := "%" + keyword + "%"
 		whereParams = append(whereParams, likeKeyword, likeKeyword)
 	}
@@ -96,7 +103,7 @@ func GetProductsHandler(c *gin.Context) {
 	db := database.GetDB()
 
 	var totalItems int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM products %s", whereClause)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM products AS p %s", whereClause)
 	if err := db.QueryRow(countQuery, whereParams...).Scan(&totalItems); err != nil {
 		log.Printf("商品総数の取得エラー: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
@@ -107,9 +114,14 @@ func GetProductsHandler(c *gin.Context) {
 	offset := (page - 1) * perPage
 
 	query := fmt.Sprintf(`
-		SELECT id, name, price, stock, image_url, updated_at
-		FROM products
+		SELECT
+			p.id, p.name, p.price, p.stock, p.image_url, p.updated_at,
+			COALESCE(ROUND(AVG(r.score), 1), 0.0),
+			COUNT(r.id)
+		FROM products AS p
+		LEFT JOIN reviews AS r ON p.id = r.product_id
 		%s
+		GROUP BY p.id, p.name, p.price, p.stock, p.image_url, p.updated_at, p.created_at
 		%s
 		LIMIT ? OFFSET ?
 	`, whereClause, orderByClause)
@@ -135,6 +147,8 @@ func GetProductsHandler(c *gin.Context) {
 			&product.Stock,
 			&imageURL,
 			&product.UpdatedAt,
+			&product.ReviewAvg,
+			&product.ReviewCount,
 		); err != nil {
 			log.Printf("商品データのスキャンエラー: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
@@ -257,6 +271,8 @@ func GetHomePageProductsHandler(c *gin.Context) {
 			if imageURL.Valid {
 				product.ImageURL = &imageURL.String
 			}
+			product.ReviewAvg = 0
+			product.ReviewCount = 0
 			pickUp = append(pickUp, product)
 		}
 		pickUpErr = rows.Err()
@@ -265,9 +281,14 @@ func GetHomePageProductsHandler(c *gin.Context) {
 	go func() {
 		defer wg.Done()
 		rows, err := db.Query(`
-			SELECT id, name, price, image_url
-			FROM products
-			ORDER BY created_at DESC
+			SELECT
+				p.id, p.name, p.price, p.image_url,
+				COALESCE(ROUND(AVG(r.score), 1), 0.0),
+				COUNT(r.id)
+			FROM products AS p
+			LEFT JOIN reviews AS r ON p.id = r.product_id
+			GROUP BY p.id, p.name, p.price, p.image_url, p.created_at
+			ORDER BY p.created_at DESC
 			LIMIT 4
 		`)
 		if err != nil {
@@ -280,7 +301,14 @@ func GetHomePageProductsHandler(c *gin.Context) {
 		for rows.Next() {
 			var product HomePageProduct
 			var imageURL sql.NullString
-			if err := rows.Scan(&product.ID, &product.Name, &product.Price, &imageURL); err != nil {
+			if err := rows.Scan(
+				&product.ID,
+				&product.Name,
+				&product.Price,
+				&imageURL,
+				&product.ReviewAvg,
+				&product.ReviewCount,
+			); err != nil {
 				log.Printf("新着商品スキャンエラー: %v", err)
 				newArrivalErr = err
 				return
@@ -296,9 +324,14 @@ func GetHomePageProductsHandler(c *gin.Context) {
 	go func() {
 		defer wg.Done()
 		rows, err := db.Query(`
-			SELECT id, name, price, image_url
-			FROM products
-			WHERE is_featured = TRUE
+			SELECT
+				p.id, p.name, p.price, p.image_url,
+				COALESCE(ROUND(AVG(r.score), 1), 0.0),
+				COUNT(r.id)
+			FROM products AS p
+			LEFT JOIN reviews AS r ON p.id = r.product_id
+			WHERE p.is_featured = TRUE
+			GROUP BY p.id, p.name, p.price, p.image_url
 			ORDER BY RAND()
 			LIMIT 4
 		`)
@@ -312,7 +345,14 @@ func GetHomePageProductsHandler(c *gin.Context) {
 		for rows.Next() {
 			var product HomePageProduct
 			var imageURL sql.NullString
-			if err := rows.Scan(&product.ID, &product.Name, &product.Price, &imageURL); err != nil {
+			if err := rows.Scan(
+				&product.ID,
+				&product.Name,
+				&product.Price,
+				&imageURL,
+				&product.ReviewAvg,
+				&product.ReviewCount,
+			); err != nil {
 				log.Printf("注目商品スキャンエラー: %v", err)
 				hotItemsErr = err
 				return

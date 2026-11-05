@@ -36,7 +36,7 @@ type JWTCustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
+var JWTSecret = []byte(os.Getenv("JWT_SECRET"))
 
 const AuthTokenCookieName = "authToken"
 
@@ -45,7 +45,7 @@ func VerifyToken(tokenString string) (*JWTCustomClaims, error) {
 		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, errors.New("予期しない署名方法です")
 		}
-		return jwtSecret, nil
+		return JWTSecret, nil
 	})
 	if err != nil {
 		log.Printf("トークン検証エラー: %v", err)
@@ -108,7 +108,7 @@ func LoginHandler(c *gin.Context) {
 			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
-	tokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+	tokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(JWTSecret)
 	if err != nil {
 		log.Printf("JWT署名エラー: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "サーバーエラーが発生しました"})
