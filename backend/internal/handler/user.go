@@ -201,7 +201,7 @@ func UpdateUserHandler(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie(AuthTokenCookieName, newTokenString, 3600, "/", "", false, true)
+	c.SetCookie(AuthTokenCookieName, newTokenString, 3600, "/", Domain, IsSecure, true)
 	c.JSON(http.StatusOK, gin.H{"message": "会員情報を編集しました"})
 }
 

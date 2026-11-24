@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,8 +28,12 @@ func main() {
 	database.InitDB()
 
 	router := gin.Default()
+	frontendOrigin := os.Getenv("FRONTEND_BASE_URL")
+	if frontendOrigin == "" {
+		frontendOrigin = "http://localhost:3000"
+	}
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{frontendOrigin},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type"},
 		AllowCredentials: true,
@@ -85,16 +90,36 @@ func main() {
 		}
 	}
 
-	log.Println("Ginサーバーをポート8080で起動します")
-	if err := router.Run(":8080"); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Ginサーバーをポート%sで起動します", port)
+	if err := router.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runMigration() {
-	dsn := os.Getenv("DB_DSN")
-	if dsn == "" {
-		log.Fatal("エラー: 環境変数DB_DSNが設定されていません")
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+	dbSocketPath := os.Getenv("DB_SOCKET_PATH")
+
+	var dsn string
+	if dbSocketPath != "" {
+		dsn = fmt.Sprintf(
+			"%s:%s@unix(%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&multiStatements=true",
+			dbUser,
+			dbPass,
+			dbSocketPath,
+			dbName,
+		)
+	} else {
+		dsn = os.Getenv("DB_DSN")
+		if dsn == "" {
+			log.Fatal("エラー: 環境変数DB_DSN（開発環境）かDB_SOCKET_PATH（本番環境）のいずれかを設定してください")
+		}
 	}
 
 	log.Println("マイグレーションを開始します...")

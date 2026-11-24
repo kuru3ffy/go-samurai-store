@@ -242,11 +242,17 @@ func CreateCheckoutSessionHandler(c *gin.Context) {
 		Quantity: stripe.Int64(1),
 	})
 
+	frontendBaseURL := os.Getenv("FRONTEND_BASE_URL")
+	if frontendBaseURL == "" {
+		frontendBaseURL = "http://localhost:3000"
+	}
+	frontendBaseURL = strings.TrimRight(frontendBaseURL, "/")
+
 	params := &stripe.CheckoutSessionParams{
 		LineItems:     lineItems,
 		Mode:          stripe.String(string(stripe.CheckoutSessionModePayment)),
-		SuccessURL:    stripe.String("http://localhost:3000/account?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL:     stripe.String("http://localhost:3000/order-confirm"),
+		SuccessURL:    stripe.String(frontendBaseURL + "/account?session_id={CHECKOUT_SESSION_ID}"),
+		CancelURL:     stripe.String(frontendBaseURL + "/order-confirm"),
 		CustomerEmail: stripe.String(claims.Email),
 		Metadata: map[string]string{
 			"orderId": strconv.FormatInt(orderID, 10),

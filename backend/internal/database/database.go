@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 
@@ -11,9 +12,25 @@ import (
 var db *sql.DB
 
 func InitDB() {
-	dsn := os.Getenv("DB_DSN")
-	if dsn == "" {
-		log.Fatal("エラー: 環境変数DB_DSNが設定されていません")
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+	dbSocketPath := os.Getenv("DB_SOCKET_PATH")
+
+	var dsn string
+	if dbSocketPath != "" {
+		dsn = fmt.Sprintf(
+			"%s:%s@unix(%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+			dbUser,
+			dbPass,
+			dbSocketPath,
+			dbName,
+		)
+	} else {
+		dsn = os.Getenv("DB_DSN")
+		if dsn == "" {
+			log.Fatal("エラー: 環境変数DB_DSN（開発環境）またはDB_SOCKET_PATH（本番環境）が設定されていません")
+		}
 	}
 
 	conn, err := sql.Open("mysql", dsn)

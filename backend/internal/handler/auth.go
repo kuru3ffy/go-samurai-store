@@ -38,6 +38,9 @@ type JWTCustomClaims struct {
 
 var JWTSecret = []byte(os.Getenv("JWT_SECRET"))
 
+var Domain = os.Getenv("COOKIE_DOMAIN")
+var IsSecure = os.Getenv("APP_ENV") == "production"
+
 const AuthTokenCookieName = "authToken"
 
 func VerifyToken(tokenString string) (*JWTCustomClaims, error) {
@@ -115,7 +118,7 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie(AuthTokenCookieName, tokenString, 3600, "/", "", false, true)
+	c.SetCookie(AuthTokenCookieName, tokenString, 3600, "/", Domain, IsSecure, true)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "ログイン成功",
 		"isAdmin": user.IsAdmin,
@@ -123,6 +126,6 @@ func LoginHandler(c *gin.Context) {
 }
 
 func LogoutHandler(c *gin.Context) {
-	c.SetCookie(AuthTokenCookieName, "", -1, "/", "", false, true)
+	c.SetCookie(AuthTokenCookieName, "", -1, "/", Domain, IsSecure, true)
 	c.Redirect(http.StatusFound, "/?logged-out=1")
 }
